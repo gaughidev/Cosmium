@@ -31,6 +31,7 @@ class Game:
         self.last_time = time.time()
         self.tick()
         self.root.mainloop()
+        self.health = 100
 
     def reset(self):
         self.rocket = {
@@ -158,7 +159,7 @@ class Game:
             dx = asteroid['x'] - self.rocket['x']
             dy = asteroid['y'] - self.rocket['y']
             if math.hypot(dx, dy) < asteroid['size'] + self.rocket['radius']:
-                self.game_over = True
+                self.health =- 1
 
         for dust in self.stardust:
             dust['y'] += dust['speed'] * dt
@@ -172,6 +173,8 @@ class Game:
 
         self.asteroids = [a for a in self.asteroids if a['y'] < HEIGHT + 100]
         self.stardust = [d for d in self.stardust if d['y'] < HEIGHT + 40]
+        if self.health == 0:
+            self.game_over = True
 
     def draw_rocket(self):
         x = int(self.rocket['x'])
@@ -238,7 +241,8 @@ class Game:
 
         self.draw_rocket()
 
-        self.canvas.create_text(30, 20, anchor='w', text=f'Stardust: {self.score}', fill=WHITE, font=('Arial', 20, 'bold'))
+        self.canvas.create_text(30, 20, anchor='nw', text=f'Stardust: {self.score}', fill=WHITE, font=('Arial', 20, 'bold'))
+        self.canvas.create_text(30, 20, anchor='ne', text=f'Health: {self.health}', fill=WHITE, font=('Arial', 20, 'bold'))
 
         if self.game_over:
             self.canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill='#0b0d1a', stipple='gray25')
