@@ -1,54 +1,138 @@
 import math
 import random
-import time
-import tkinter as tk
+import sys
+
+import pygame
+
 
 WIDTH = 900
 HEIGHT = 600
 FPS = 60
 
-BLACK = '#070912'
-WHITE = '#f6f7fb'
-BLUE = '#7ec8ff'
-GOLD = '#ffd166'
-RED = '#ff5f5f'
-GRAY = '#a1a9bb'
+BLACK = (8, 10, 18)
+WHITE = (245, 247, 255)
+BLUE = (126, 200, 255)
+GOLD = (255, 209, 102)
+RED = (255, 95, 95)
+GRAY = (170, 175, 190)
 
 
-class Game:
+class Rocket:
     def __init__(self):
-        self.root = tk.Tk()
-        self.root.title('Rocket Run: Stardust Escape')
-        self.canvas = tk.Canvas(self.root, width=WIDTH, height=HEIGHT, bg=BLACK, highlightthickness=0)
-        self.canvas.pack()
+        self.x = WIDTH / 2
+        self.y = HEIGHT - 70
+        self.radius = 18
+        self.speed = 360
+        self.angle = -90
 
-        self.root.bind('<KeyPress>', self.on_key_press)
-        self.root.bind('<KeyRelease>', self.on_key_release)
-        self.root.bind('<space>', self.restart_if_game_over)
+    def update(self, dt, keys):
+        dx = 0
+        dy = 0
 
-        self.keys = {'left': False, 'right': False, 'up': False, 'down': False}
-        self.reset()
-        self.last_time = time.time()
-        self.tick()
-        self.root.mainloop()
-        self.health = 100
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            dx -= 1
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            dx += 1
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
+            dy -= 1
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            dy += 1
 
-    def reset(self):
-        self.rocket = {
-            'x': WIDTH / 2,
-            'y': HEIGHT - 70,
-            'radius': 18,
-            'speed': 330,
-            'angle': 0,
-        }
-        self.asteroids = []
-        self.stardust = []
-        self.score = 0
-        self.game_over = False
-        self.asteroid_timer = 0
-        self.dust_timer = 0
+        if dx or dy:
+            length = math.hypot(dx, dy)
+            dx /= length
+            dy /= length
+            self.x += dx * self.speed * dt
+            self.y += dy * self.speed * dt
+            self.angle = math.degrees(math.atan2(dy, dx)) + 90
+
+        self.x = max(self.radius, min(WIDTH - self.radius, self.x))
+        self.y = max(self.radius, min(HEIGHT - self.radius, self.y))
+
+    def draw(self, screen):
+        cx = int(self.x)
+        cy = int(self.y)
+        points = []
+        for px, py in [(-12, 18), (0, -22), (12, 18), (0, 8)]:
+            angle = math.radians(self.angle)
+            rx = px * math.cos(angle) - py * math.sin(angle)
+            ry = px * math.sin(angle) + py * math.cos(angle)
+            points.append((cx + rx, cy + ry))
+
+        pygame.draw.polygon(screen, WHITE, points)
+        pygame.draw.polygon(screen, BLUE, points, 2)
+
+        flame_points = []
+        for px, py in [(-6, 18), (6, 18), (0, 24 + random.randint(0, 6))]:
+            angle = math.radians(self.angle)
+            rx = px * math.cos(angle) - py * math.sin(angle)
+            ry = px * math.sin(angle) + py * math.cos(angle)
+            flame_points.append((cx + rx, cy + ry))
+        if random.random() < 0.9:
+            pygame.draw.polygon(screen, GOLD, flame_points)
+
+
+class Asteroid:
+    def __init__(self):
+        self.size = random.randint(18, 42)
+        self.x = random.randint(self.size, WIDTH - self.size)
+        self.y = -self.size - random.randint(20, 120)
+        self.speed = random.randint(120, 220)
+        self.rotation = random.uniform(0, 2 * math.pi)
+        self.spin = random.uniform(-1.5, 1.5)
+        self.points = []
+        for i in range(8):
+            angle = i / 8 * (2 * math.pi)
+            radius = self.size * random.uniform(0.7, 1.2)
+            self.points.append((math.cos(angle) * radius, math.sin(angle) * radius))
+
+    def update(self, dt):
+        self.y += self.speed * dt
+        self.rotation += self.spin * dt
+
+    def draw(self, screen):
+        transformed = []
+        for px, py in self.points:
+            x = self.x + px * math.cos(self.rotation) - py * math.sin(self.rotation)
+            y = self.y + px * math.sin(self.rotation) + py * math.cos(self.rotation)
+            transformed.append((x, y))
+        pygame.draw.polygon(screen, GRAY, transformed)
+        pygame.draw.polygon(screen, RED, transformed, 2)
+
+    def collides_with(self, rocket):
+        dx = self.x - rocket.x
+        dy = self.y - rocket.y
+        return math.hypot(dx, dy) < self.size + rocket.radius
+
+
+class Stardust:
+    def __init__(self):
+        self.radius = 7
+        self.x = random.randint(self.radius, WIDTH - self.radius)
+        self.y = -self.radius - random.randint(10, 90)
+        self.speed = random.randint(80, 180)
+        self.phase = random.uniform(0, 2 * math.pi)
+
+    def update(self, dt):
+        self.y += self.speed * dt
+        self.phase += dt * 8
+
+    def draw(self, screen):
+        shimmer = 0.5 + 0.5 * math.sin(self.phase)
+        radius = int(self.radius * (0.8 + shimmer * 0.8))
+        pygame.draw.circle(screen, GOLD, (int(self.x), int(self.y)), radius)
+        pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), max(2, radius // 2), 1)
+
+    def collides_with(self, rocket):
+        dx = self.x - rocket.x
+        dy = self.y - rocket.y
+        return math.hypot(dx, dy) < self.radius + rocket.radius
+
+
+class Starfield:
+    def __init__(self):
         self.stars = []
-        for _ in range(120):
+        for _ in range(130):
             self.stars.append({
                 'x': random.randint(0, WIDTH),
                 'y': random.randint(0, HEIGHT),
@@ -56,207 +140,134 @@ class Game:
                 'speed': random.uniform(10, 70),
             })
 
-    def on_key_press(self, event):
-        key = event.keysym.lower()
-        if key == 'left' or key == 'a':
-            self.keys['left'] = True
-        elif key == 'right' or key == 'd':
-            self.keys['right'] = True
-        elif key == 'up' or key == 'w':
-            self.keys['up'] = True
-        elif key == 'down' or key == 's':
-            self.keys['down'] = True
-
-    def on_key_release(self, event):
-        key = event.keysym.lower()
-        if key == 'left' or key == 'a':
-            self.keys['left'] = False
-        elif key == 'right' or key == 'd':
-            self.keys['right'] = False
-        elif key == 'up' or key == 'w':
-            self.keys['up'] = False
-        elif key == 'down' or key == 's':
-            self.keys['down'] = False
-
-    def restart_if_game_over(self, event):
-        if self.game_over:
-            self.reset()
-
-    def spawn_asteroid(self):
-        size = random.randint(18, 42)
-        asteroid = {
-            'x': random.randint(size, WIDTH - size),
-            'y': -size - 20,
-            'size': size,
-            'speed': random.randint(140, 250),
-            'rotation': random.uniform(0, 2 * math.pi),
-            'spin': random.uniform(-1.5, 1.5),
-            'shape': [],
-        }
-        for i in range(8):
-            angle = (i / 8) * (2 * math.pi)
-            radius = size * random.uniform(0.7, 1.2)
-            asteroid['shape'].append((math.cos(angle) * radius, math.sin(angle) * radius))
-        self.asteroids.append(asteroid)
-
-    def spawn_stardust(self):
-        self.stardust.append({
-            'x': random.randint(10, WIDTH - 10),
-            'y': -12,
-            'radius': 7,
-            'speed': random.randint(90, 190),
-            'phase': random.uniform(0, 2 * math.pi),
-            'twinkle': random.uniform(0.6, 1.5),
-        })
-
     def update(self, dt):
-        if self.game_over:
-            for star in self.stars:
-                star['y'] += star['speed'] * dt
-                if star['y'] > HEIGHT:
-                    star['y'] = -5
-                    star['x'] = random.randint(0, WIDTH)
-            return
-
-        move_x = (1 if self.keys['right'] else 0) - (1 if self.keys['left'] else 0)
-        move_y = (1 if self.keys['down'] else 0) - (1 if self.keys['up'] else 0)
-
-        if move_x or move_y:
-            length = math.hypot(move_x, move_y)
-            move_x /= length
-            move_y /= length
-            self.rocket['x'] += move_x * self.rocket['speed'] * dt
-            self.rocket['y'] += move_y * self.rocket['speed'] * dt
-
-        self.rocket['x'] = max(self.rocket['radius'], min(WIDTH - self.rocket['radius'], self.rocket['x']))
-        self.rocket['y'] = max(self.rocket['radius'], min(HEIGHT - self.rocket['radius'], self.rocket['y']))
-
-        if move_x or move_y:
-            self.rocket['angle'] = math.degrees(math.atan2(move_y, move_x)) + 90
-
         for star in self.stars:
             star['y'] += star['speed'] * dt
             if star['y'] > HEIGHT:
                 star['y'] = -5
                 star['x'] = random.randint(0, WIDTH)
 
-        self.asteroid_timer += dt * 1000
-        self.dust_timer += dt * 1000
+    def draw(self, screen):
+        for star in self.stars:
+            pygame.draw.circle(screen, WHITE, (int(star['x']), int(star['y'])), star['size'])
 
-        spawn_interval = max(500, 1500 - self.score * 28)
+
+class Game:
+    def __init__(self):
+        pygame.init()
+        pygame.display.set_caption('Cosmium: Stardust Escape')
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont('arial', 26, bold=True)
+        self.big_font = pygame.font.SysFont('arial', 48, bold=True)
+        self.reset()
+
+    def reset(self):
+        self.rocket = Rocket()
+        self.starfield = Starfield()
+        self.asteroids = []
+        self.stardust = []
+        self.score = 0
+        self.health = 100
+        self.game_over = False
+        self.asteroid_timer = 0.0
+        self.dust_timer = 0.0
+
+    def spawn_asteroid(self):
+        self.asteroids.append(Asteroid())
+
+    def spawn_dust(self):
+        self.stardust.append(Stardust())
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if self.game_over and event.key == pygame.K_SPACE:
+                    self.reset()
+        return True
+
+    def update(self, dt):
+        if self.game_over:
+            self.starfield.update(dt)
+            return
+
+        self.starfield.update(dt)
+        keys = pygame.key.get_pressed()
+        self.rocket.update(dt, keys)
+
+        self.asteroid_timer += dt
+        self.dust_timer += dt
+
+        spawn_interval = max(0.55, 1.5 - self.score * 0.04)
         if self.asteroid_timer >= spawn_interval:
             self.spawn_asteroid()
-            self.asteroid_timer = 0
+            self.asteroid_timer = 0.0
 
-        if self.dust_timer >= 1100:
-            self.spawn_stardust()
-            self.dust_timer = 0
+        if self.dust_timer >= 1.15:
+            self.spawn_dust()
+            self.dust_timer = 0.0
 
         for asteroid in self.asteroids:
-            asteroid['y'] += asteroid['speed'] * dt
-            asteroid['rotation'] += asteroid['spin'] * dt
-
-            dx = asteroid['x'] - self.rocket['x']
-            dy = asteroid['y'] - self.rocket['y']
-            if math.hypot(dx, dy) < asteroid['size'] + self.rocket['radius']:
-                self.health =- 1
+            asteroid.update(dt)
+            if asteroid.collides_with(self.rocket):
+                self.health -= 1
+                self.asteroids.remove(asteroid)
+                break
 
         for dust in self.stardust:
-            dust['y'] += dust['speed'] * dt
-            dust['phase'] += dt * 8
-            dx = dust['x'] - self.rocket['x']
-            dy = dust['y'] - self.rocket['y']
-            if math.hypot(dx, dy) < dust['radius'] + self.rocket['radius']:
+            dust.update(dt)
+            if dust.collides_with(self.rocket):
                 self.score += 1
                 self.stardust.remove(dust)
                 break
 
-        self.asteroids = [a for a in self.asteroids if a['y'] < HEIGHT + 100]
-        self.stardust = [d for d in self.stardust if d['y'] < HEIGHT + 40]
-        if self.health == 0:
+        self.asteroids = [a for a in self.asteroids if a.y < HEIGHT + 120]
+        self.stardust = [d for d in self.stardust if d.y < HEIGHT + 80]
+
+        if self.health <= 0:
             self.game_over = True
 
-    def draw_rocket(self):
-        x = int(self.rocket['x'])
-        y = int(self.rocket['y'])
-        angle = math.radians(self.rocket['angle'])
-        base = [
-            (0, -22),
-            (-12, 18),
-            (0, 8),
-            (12, 18),
-        ]
-
-        points = []
-        for px, py in base:
-            rx = px * math.cos(angle) - py * math.sin(angle)
-            ry = px * math.sin(angle) + py * math.cos(angle)
-            points.append((x + rx, y + ry))
-
-        self.canvas.create_polygon(points, fill=WHITE, outline=BLUE, width=2)
-
-        flame = []
-        for px, py in [( -6, 18), (6, 18), (0, 24 + random.randint(0, 6))]:
-            rx = px * math.cos(angle) - py * math.sin(angle)
-            ry = px * math.sin(angle) + py * math.cos(angle)
-            flame.append((x + rx, y + ry))
-        if random.random() < 0.9:
-            self.canvas.create_polygon(flame, fill=GOLD, outline='')
-
-    def draw_asteroid(self, asteroid):
-        points = []
-        cx = asteroid['x']
-        cy = asteroid['y']
-        rotation = asteroid['rotation']
-        for px, py in asteroid['shape']:
-            x = cx + px * math.cos(rotation) - py * math.sin(rotation)
-            y = cy + px * math.sin(rotation) + py * math.cos(rotation)
-            points.append((x, y))
-        self.canvas.create_polygon(points, fill=GRAY, outline=RED, width=2)
-
-    def draw_stardust(self, dust):
-        shimmer = 0.5 + 0.5 * math.sin(dust['phase'])
-        radius = int(dust['radius'] * (0.8 + shimmer * 0.8))
-        self.canvas.create_oval(
-            dust['x'] - radius,
-            dust['y'] - radius,
-            dust['x'] + radius,
-            dust['y'] + radius,
-            fill=GOLD,
-            outline=WHITE,
-            width=2,
-        )
-
     def draw(self):
-        self.canvas.delete('all')
-
-        for star in self.stars:
-            self.canvas.create_oval(star['x'], star['y'], star['x'] + star['size'], star['y'] + star['size'], fill=WHITE)
+        self.screen.fill(BLACK)
+        self.starfield.draw(self.screen)
 
         for asteroid in self.asteroids:
-            self.draw_asteroid(asteroid)
+            asteroid.draw(self.screen)
 
         for dust in self.stardust:
-            self.draw_stardust(dust)
+            dust.draw(self.screen)
 
-        self.draw_rocket()
+        self.rocket.draw(self.screen)
 
-        self.canvas.create_text(30, 20, anchor='nw', text=f'Stardust: {self.score}', fill=WHITE, font=('Arial', 20, 'bold'))
-        self.canvas.create_text(30, 20, anchor='ne', text=f'Health: {self.health}', fill=WHITE, font=('Arial', 20, 'bold'))
+        score_text = self.font.render(f'Stardust: {self.score}', True, WHITE)
+        health_text = self.font.render(f'Health: {self.health}', True, WHITE)
+        self.screen.blit(score_text, (20, 18))
+        self.screen.blit(health_text, (WIDTH - health_text.get_width() - 20, 18))
 
         if self.game_over:
-            self.canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill='#0b0d1a', stipple='gray25')
-            self.canvas.create_text(WIDTH / 2, HEIGHT / 2 - 30, text='Mission Failed', fill=RED, font=('Arial', 36, 'bold'))
-            self.canvas.create_text(WIDTH / 2, HEIGHT / 2 + 25, text='Press SPACE to restart', fill=WHITE, font=('Arial', 22))
+            overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            overlay.fill((11, 14, 25, 180))
+            self.screen.blit(overlay, (0, 0))
+            title = self.big_font.render('Mission Failed', True, RED)
+            restart = self.font.render('Press SPACE to restart', True, WHITE)
+            self.screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 2 - 30))
+            self.screen.blit(restart, (WIDTH // 2 - restart.get_width() // 2, HEIGHT // 2 + 30))
 
-    def tick(self):
-        now = time.time()
-        dt = min(0.033, now - self.last_time)
-        self.last_time = now
-        self.update(dt)
-        self.draw()
-        self.root.after(int(1000 / FPS), self.tick)
+        pygame.display.flip()
+
+    def run(self):
+        running = True
+        while running:
+            dt = self.clock.tick(FPS) / 1000.0
+            running = self.handle_events()
+            self.update(dt)
+            self.draw()
+
+        pygame.quit()
+        sys.exit()
 
 
 if __name__ == '__main__':
-    Game()
+    Game().run()
